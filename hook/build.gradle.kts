@@ -8,7 +8,8 @@ plugins {
 
 android {
     namespace = "com.houvven.guise.hook"
-    compileSdk = 36
+    // 同 app 模块说明：编译期使用 API 35 (Android 15) 正式版，避免云端因 API 36 未发布而失败
+    compileSdk = 35
 
     defaultConfig {
         minSdk = 24

@@ -61,15 +61,16 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
           cache: "gradle"
 
-      # ------- Android SDK 36 安装处理 -------
-      # SDK 36 目前属于 Preview / 近期发布版本，
-      # 我们通过 sdkmanager 安装 platform;android-36 和 build-tools
-      # [注意] android-actions/setup-android v3 内部对 packages 是"必须全成功"，一旦某个包还没发就会失败，
-      # 所以我们只在 setup 阶段装稳定版(34/35)，SDK 36 在下一步 run: sdkmanager --channel=3 按需安装
+      # ------- Android SDK 安装处理 -------
+      # [注意] 截至2026-08，Android 16 (API 36) 仍未在 SDK manager 的稳定channel上发布；
+      #        compileSdk/targetSdk 我们已降到 35 (Android 15 正式版) 以便云端直接构建。
+      #        所有 Hooker 内对 Android 14/15/16 新API的调用均使用反射或 version check，
+      #        编译期仅需 SDK 35 即可。
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4
         with:
-          cmdline-tools-version: "11076708" # cmdline-tools 12.0 (lts)
+          # setup-android v4 默认 cmdline-tools 20.0 (长版本号 14742923)
+          cmdline-tools-version: "14742923"
           packages: |
             platforms;android-35
             platforms;android-34
@@ -77,19 +78,34 @@ jobs:
             build-tools;35.0.0
             build-tools;34.0.0
 
-      # 兜底：SDK 36 / preview / channel=3 单独安装（不阻塞失败）
-      - name: Accept Android SDK licenses + install SDK 36 preview
+      # SDK licenses + 可选 API 36 preview (不阻塞失败) + 写 local.properties (关键！AGP 有时找不到 SDK)
+      - name: Accept Android SDK licenses + write local.properties
         run: |
+          set -x
           yes 2>/dev/null | sdkmanager --licenses >/dev/null 2>&1 || true
           sdkmanager --update --channel=0 --include_obsolete=false >/dev/null 2>&1 || true
-          # 先尝试 channel=0 的稳定 SDK 36，没有就回退 channel=3 preview
-          (sdkmanager --install --channel=0 "platforms;android-36" "build-tools;36.0.0" 2>&1 | tail -n 10) \
-            || (sdkmanager --install --channel=3 "platforms;android-36" "build-tools;36.0.0" 2>&1 | tail -n 20 || true)
-          # 列出最终可用的平台
-          echo "[CI] Available platforms:"
-          ls "$ANDROID_HOME/platforms" 2>/dev/null
-          echo "[CI] Available build-tools:"
-          ls "$ANDROID_HOME/build-tools" 2>/dev/null
+          # 尝试 preview 36（仅在有包时生效），忽略任何失败
+          sdkmanager --install --channel=3 \
+            "platforms;android-36" "build-tools;36.0.0" 2>&1 | tail -n 20 || true
+          # 列出版本，便于日志排障
+          echo "[CI] ANDROID_HOME=$ANDROID_HOME"
+          echo "[CI] ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          ls "$ANDROID_HOME/platforms" 2>/dev/null || true
+          ls "$ANDROID_HOME/build-tools" 2>/dev/null || true
+          which sdkmanager
+          # -- 关键：为 AGP 写入 local.properties，彻底避免 "SDK location not found" --
+          #    若已存在则改为追加/替换 sdk.dir，避免覆盖原用户项目的其他配置
+          if [ -f local.properties ]; then
+            if grep -q '^sdk\.dir=' local.properties; then
+              sed -i "s|^sdk\.dir=.*|sdk.dir=${ANDROID_HOME}|" local.properties
+            else
+              echo "sdk.dir=${ANDROID_HOME}" >> local.properties
+            fi
+          else
+            echo "sdk.dir=${ANDROID_HOME}" > local.properties
+          fi
+          echo "[local.properties]"
+          cat local.properties
 
       # ------- Gradle Caching (Build Cache + 依赖缓存) -------
       - name: Cache Gradle build outputs
@@ -148,17 +164,19 @@ jobs:
           # Bash 内做首字母大写：debug → Debug, release → Release
           TASK_NAME="assemble${BUILD_TYPE_LOWER^}"
           echo "[CI] -> Running :app:${TASK_NAME}"
-          ./gradlew \
-            ":app:${TASK_NAME}" \
+          echo "[CI] -> JAVA_HOME=$JAVA_HOME"
+          echo "[CI] -> ANDROID_HOME=$ANDROID_HOME"
+          ./gradlew ":app:${TASK_NAME}" \
             --no-daemon \
             --build-cache \
             --stacktrace \
+            --info \
             --configuration-cache-problems=warn \
-            -Pandroid.injected.signing.store.file=$HOME/debug.keystore \
+            -Pandroid.injected.signing.store.file="$HOME/debug.keystore" \
             -Pandroid.injected.signing.store.password=android \
             -Pandroid.injected.signing.key.alias=androiddebugkey \
             -Pandroid.injected.signing.key.password=android \
-            2>&1 | tail -n 80
+            2>&1 | tail -n 200
 
       # ------- 上传 APK 产物 -------
       - name: Locate APK files

@@ -13,12 +13,15 @@ plugins {
 
 android {
     namespace = "com.houvven.guise"
-    compileSdk = 36
+    // 编译期 SDK 使用 Android 15 (API 35) 正式版：截至 2026-08，API 36 尚未在 SDK Manager 正式发布，
+    // 会导致云端编译失败。所有 Hooker 对 Android 14/15/16 新API 的调用均使用反射 +
+    // SystemVersion.require() 版本保护方式，编译期不依赖 SDK 36，因此不影响运行时伪装功能。
+    compileSdk = 35
 
     defaultConfig {
         applicationId = namespace
         minSdk = 24
-        targetSdk = 36
+        targetSdk = 35
         val version = loadProperties(file("version.properties").path)
         versionCode = version.getProperty("version.code").toInt()
         versionName = version.getProperty("version.name")
