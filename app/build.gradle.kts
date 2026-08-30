@@ -13,10 +13,12 @@ plugins {
 
 android {
     namespace = "com.houvven.guise"
-    // 编译期 SDK 使用 Android 15 (API 35) 正式版：截至 2026-08，API 36 尚未在 SDK Manager 正式发布，
-    // 会导致云端编译失败。所有 Hooker 对 Android 14/15/16 新API 的调用均使用反射 +
-    // SystemVersion.require() 版本保护方式，编译期不依赖 SDK 36，因此不影响运行时伪装功能。
-    compileSdk = 35
+    // 2026-08 更新：GitHub ubuntu-latest runner (20260804 镜像) 已正式预装
+    //   platforms: android-37 / 37.1 / 36.1 / 36 / 35 / 34
+    //   build-tools: 37.0.0 / 36.0.0 / 36.1.0 / 35.0.0 / 34.0.0
+    // 所以 compileSdk 可以安全升到最新 SDK 37；targetSdk 保持 35 (Android 15 正式版)
+    // 避免高 targetSdk 引入的"前台服务类型/图片 intent 豁免/后台安装"等一系列合规限制。
+    compileSdk = 37
 
     defaultConfig {
         applicationId = namespace

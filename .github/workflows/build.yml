@@ -61,40 +61,66 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
           cache: "gradle"
 
-      # ------- Android SDK 安装处理 -------
-      # [注意] 截至2026-08，Android 16 (API 36) 仍未在 SDK manager 的稳定channel上发布；
-      #        compileSdk/targetSdk 我们已降到 35 (Android 15 正式版) 以便云端直接构建。
-      #        所有 Hooker 内对 Android 14/15/16 新API的调用均使用反射或 version check，
-      #        编译期仅需 SDK 35 即可。
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v4
-        with:
-          # setup-android v4 默认 cmdline-tools 20.0 (长版本号 14742923)
-          cmdline-tools-version: "14742923"
-          packages: |
-            platforms;android-35
-            platforms;android-34
-            platforms;android-33
-            build-tools;35.0.0
-            build-tools;34.0.0
-
-      # SDK licenses + 可选 API 36 preview (不阻塞失败) + 写 local.properties (关键！AGP 有时找不到 SDK)
-      - name: Accept Android SDK licenses + write local.properties
+      # ==================================================================
+      # Android SDK 安装
+      # [2026-08 最佳实践] GitHub ubuntu-latest (Ubuntu 24.04 20260804+) 预装了完整 Android SDK：
+      #   - ANDROID_HOME = /usr/local/lib/android/sdk
+      #   - platforms:  android-37 / 37.1 / 36 / 36.1 / 35 / 34
+      #   - build-tools: 37.0.0 / 36.0.0 / 35.0.0 / 34.0.0 等
+      #   - NDK、platform-tools、cmdline-tools、m2repository 都已就位
+      # 因此我们不再使用 android-actions/setup-android（它会尝试重写 cmdline-tools 导致与预装目录冲突，
+      # Step 5 直接失败 — 连续 3 次 CI 都栽在这个 action）。
+      # 本步骤只做：
+      #   1. 显式导出 ANDROID_SDK_ROOT / ANDROID_HOME 并把 sdkmanager 所在 bin 加入 PATH
+      #   2. 刷新 licenses 并按需安装 36/37 缺失包（因已预装，99% 的情况直接 no-op）
+      #   3. 写 local.properties sdk.dir 供 AGP 读取
+      # ==================================================================
+      - name: Setup Android SDK (use runner preinstalled)
         run: |
           set -x
-          yes 2>/dev/null | sdkmanager --licenses >/dev/null 2>&1 || true
-          sdkmanager --update --channel=0 --include_obsolete=false >/dev/null 2>&1 || true
-          # 尝试 preview 36（仅在有包时生效），忽略任何失败
-          sdkmanager --install --channel=3 \
-            "platforms;android-36" "build-tools;36.0.0" 2>&1 | tail -n 20 || true
-          # 列出版本，便于日志排障
-          echo "[CI] ANDROID_HOME=$ANDROID_HOME"
-          echo "[CI] ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
-          ls "$ANDROID_HOME/platforms" 2>/dev/null || true
-          ls "$ANDROID_HOME/build-tools" 2>/dev/null || true
-          which sdkmanager
-          # -- 关键：为 AGP 写入 local.properties，彻底避免 "SDK location not found" --
-          #    若已存在则改为追加/替换 sdk.dir，避免覆盖原用户项目的其他配置
+          export ANDROID_HOME=/usr/local/lib/android/sdk
+          export ANDROID_SDK_ROOT=${ANDROID_HOME}
+          # 允许 预装 cmdline-tools/latest 或 20.0 两种目录名
+          export PATH="${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/cmdline-tools/20.0/bin:${ANDROID_HOME}/cmdline-tools/12.0/bin:${ANDROID_HOME}/platform-tools:${PATH}"
+
+          echo "[CI] ANDROID_HOME=${ANDROID_HOME}"
+          echo "[CI] ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT}"
+          echo "[CI] PATH=${PATH}"
+
+          # 若预装的 cmdline-tools 太旧 (<20.0 会解析不出 36.1 这种 Major.Minor 包)，
+          # 先在不破坏原路径的情况下升级到 cmdline-tools latest；结果可能落到 latest-2 目录，按社区方案 mv 回去
+          if ! which sdkmanager >/dev/null 2>&1; then
+            echo "[CI] sdkmanager not found in PATH - searching"
+            find "${ANDROID_HOME}/cmdline-tools" -name sdkmanager 2>/dev/null || true
+          fi
+          SDK_MANAGER="$(which sdkmanager 2>/dev/null || true)"
+          echo "[CI] sdkmanager resolved: ${SDK_MANAGER}"
+
+          # 允许 sdkmanager 找不到时静默跳过（极端情况），因为 runner 镜像已经带了 platform-35，够编译用
+          if [ -n "${SDK_MANAGER}" ]; then
+            yes 2>/dev/null | "${SDK_MANAGER}" --licenses >/dev/null 2>&1 || true
+            "${SDK_MANAGER}" --update --channel=0 --include_obsolete=false >/dev/null 2>&1 || true
+            # 确保我们需要的三个关键 Platform + build-tools 都在，缺失则补装
+            "${SDK_MANAGER}" --install \
+              "platforms;android-37" "platforms;android-36" "platforms;android-35" \
+              "build-tools;37.0.0" "build-tools;36.0.0" "build-tools;35.0.0" \
+              "platform-tools" "tools" 2>&1 | tail -n 30 || true
+            # 社区方案：若升级 cmdline-tools latest 落到 latest-2，则替换
+            if [ -d "${ANDROID_HOME}/cmdline-tools/latest-2" ]; then
+              rm -rf "${ANDROID_HOME}/cmdline-tools/latest"
+              mv "${ANDROID_HOME}/cmdline-tools/latest-2" "${ANDROID_HOME}/cmdline-tools/latest"
+            fi
+          fi
+
+          # ---------- 最终产物列一下，便于排障 ----------
+          echo "[CI] Installed platforms:"
+          ls "${ANDROID_HOME}/platforms" 2>/dev/null || true
+          echo "[CI] Installed build-tools:"
+          ls "${ANDROID_HOME}/build-tools" 2>/dev/null || true
+          echo "[CI] cmdline-tools dirs:"
+          ls "${ANDROID_HOME}/cmdline-tools" 2>/dev/null || true
+
+          # ---------- 写 local.properties（若有 sdk.dir 行则替换，否则追加）----------
           if [ -f local.properties ]; then
             if grep -q '^sdk\.dir=' local.properties; then
               sed -i "s|^sdk\.dir=.*|sdk.dir=${ANDROID_HOME}|" local.properties
@@ -106,6 +132,11 @@ jobs:
           fi
           echo "[local.properties]"
           cat local.properties
+
+          # ---------- 把 ANDROID_HOME/PATH 写到 GITHUB_ENV，让后续 step 继承 ----------
+          echo "ANDROID_HOME=${ANDROID_HOME}"            >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT}"    >> "$GITHUB_ENV"
+          echo "PATH=${PATH}"                            >> "$GITHUB_ENV"
 
       # ------- Gradle Caching (Build Cache + 依赖缓存) -------
       - name: Cache Gradle build outputs
