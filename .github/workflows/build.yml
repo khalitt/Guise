@@ -187,17 +187,27 @@ jobs:
           cat gradle.properties | tail -n 6
 
       # ------- 真正执行构建 -------
+      # 注意：此 step 结束后必须产出 1 个体积合理的 APK (>= 500KB)，否则直接把 CI 标红，
+      # 避免把 intermediate 目录中的几 KB manifest/apk_list 占位"小apk"当结果上传(之前出现 2.59KB 产物)
       - name: Build APK (${{ matrix.build_type }})
         env:
           BUILD_TYPE_LOWER: ${{ matrix.build_type }}
         run: |
           chmod +x ./gradlew
-          # Bash 内做首字母大写：debug → Debug, release → Release
-          TASK_NAME="assemble${BUILD_TYPE_LOWER^}"
-          echo "[CI] -> Running :app:${TASK_NAME}"
-          echo "[CI] -> JAVA_HOME=$JAVA_HOME"
-          echo "[CI] -> ANDROID_HOME=$ANDROID_HOME"
-          ./gradlew ":app:${TASK_NAME}" \
+          TASK_NAME=":app:assemble${BUILD_TYPE_LOWER^}"
+          echo "[CI] Gradle task -> ${TASK_NAME}"
+          echo "[CI] JAVA_HOME=${JAVA_HOME}"
+          echo "[CI] ANDROID_HOME=${ANDROID_HOME}"
+
+          # 先做一次 --dry-run，确认 Gradle 能识别我们的任务(不存在会提前在此处报错，避免真 build 了 60s 却 UP-TO-DATE)
+          echo "=== Gradle --dry-run (确认 assemble 任务真实存在且会执行) ==="
+          ./gradlew "${TASK_NAME}" --dry-run --no-daemon --configuration-cache-problems=warn 2>&1 \
+            | tail -n 40 || true
+
+          echo "=== 开始正式构建 ==="
+          # 把整个 build 日志落盘，失败时可以被"Upload build logs on failure"收走
+          set +e
+          ./gradlew "${TASK_NAME}" \
             --no-daemon \
             --build-cache \
             --stacktrace \
@@ -207,30 +217,85 @@ jobs:
             -Pandroid.injected.signing.store.password=android \
             -Pandroid.injected.signing.key.alias=androiddebugkey \
             -Pandroid.injected.signing.key.password=android \
-            2>&1 | tail -n 200
+            2>&1 | tee build-output.log | tail -n 200
+          GRADLE_RC=${PIPESTATUS[0]}
+          set -e
+
+          echo "[CI] Gradle exit code: ${GRADLE_RC}"
+
+          # ---------- 无论成败，都把 outputs 目录列出来 ----------
+          echo "=== app/build/outputs/apk 目录内容 ==="
+          if [ -d app/build/outputs/apk ]; then
+            find app/build/outputs/apk -maxdepth 5 -type f -print0 2>/dev/null | xargs -0 -r ls -lh
+          else
+            echo "  <directory not found — build 完全没有产生任何 outputs>"
+          fi
+
+          if [ "${GRADLE_RC}" -ne 0 ]; then
+            echo "::error::Gradle assemble 任务失败，exit_code=${GRADLE_RC}"
+            exit "${GRADLE_RC}"
+          fi
+
+          # ---------- 关键校验：必须存在 >= 500KB 的 .apk 产物 ----------
+          echo "=== 体积校验：仅接受 >= 500KB 的 APK 文件，排除 -unsigned / -unaligned ==="
+          mapfile -t VALID_APKS < <(
+            find app/build/outputs/apk \
+              -type f \( -iname "*.apk" \) \
+              -size +500k \
+              ! -iname "*-unsigned.apk" \
+              ! -iname "*-unaligned.apk" \
+              2>/dev/null || true
+          )
+
+          echo "找到有效 APK: ${#VALID_APKS[@]} 个"
+          for f in "${VALID_APKS[@]}"; do
+            ls -lh "$f"
+          done
+
+          if [ "${#VALID_APKS[@]}" -eq 0 ]; then
+            echo "::error::没有找到任何体积 >= 500KB 且已签名的 APK 产物。可能 assemble 任务是空的、或签名失败生成了 unsigned.apk。"
+            # 补充诊断：列出所有小 APK 文件名，帮助定位到底捞到了什么
+            echo "=== 诊断：所有 .apk 文件(含小体积) ==="
+            find app/build/outputs/apk -type f -iname "*.apk" -exec ls -lh {} \; 2>/dev/null || true
+            echo "=== 诊断：build-output.log 末尾 80 行 ==="
+            tail -n 80 build-output.log 2>/dev/null || true
+            exit 1
+          fi
+
+          # ---------- 归档合格 APK 到 apk-artifacts ----------
+          mkdir -p apk-artifacts
+          for f in "${VALID_APKS[@]}"; do
+            cp -v "$f" apk-artifacts/
+          done
+          echo "=== apk-artifacts 目录最终内容 ==="
+          ls -lh apk-artifacts/
 
       # ------- 上传 APK 产物 -------
-      - name: Locate APK files
+      # [注意] 只上传 apk-artifacts 目录中我们已经校验过的合格 APK
+      #       不再使用 app/build/outputs/apk/**/*.apk 通配，它会把 intermediate 子目录下的几 KB
+      #       manifest/apk_list placeholder 当 APK 一并打包进 artifact，造成产物只有 2~3 KB
+      - name: Locate APK files (summary listing only)
         id: locate
         if: always()
         run: |
-          echo "--- APKs found ---"
-          find . -type f -iname "*.apk" -not -path "*/node_modules/*" 2>/dev/null | sort
-          # 输出到 outputs 汇总
-          mkdir -p apk-artifacts
-          find . -type f -iname "*.apk" -not -path "*/node_modules/*" -exec cp -v {} apk-artifacts/ \; 2>/dev/null || true
-          ls -lah apk-artifacts/ 2>/dev/null || true
+          echo "--- Summary of apk-artifacts ---"
+          if [ -d apk-artifacts ]; then
+            ls -lah apk-artifacts/ || true
+            # 计算每个文件 sha256，方便用户在 summary 里比对
+            (cd apk-artifacts && for f in *.apk; do [ -f "$f" ] && sha256sum "$f" || true; done) || true
+          else
+            echo "<apk-artifacts 目录不存在>"
+          fi
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v5
         if: success()
         with:
           name: Guise-${{ matrix.build_type }}-apk
-          path: |
-            apk-artifacts/*.apk
-            app/build/outputs/apk/**/*.apk
+          path: apk-artifacts/*.apk
           retention-days: 30
           compression-level: 6
+          if-no-files-found: error
 
       # ------- 上传 mapping/日志（debug release 失败排错） -------
       - name: Upload build logs on failure
