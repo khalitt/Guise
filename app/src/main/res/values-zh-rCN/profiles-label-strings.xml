@@ -26,4 +26,145 @@
     <string name="network_type">网络类型</string>
     <string name="identity">标识符</string>
     <string name="mobile_network_type">移动网络类型</string>
+
+    <!-- ============ 新增：硬件/构建/版本属性 ============ -->
+    <string name="hardware_properties">硬件与构建</string>
+    <string name="hardware">硬件名</string>
+    <string name="board">主板</string>
+    <string name="bootloader">引导程序</string>
+    <string name="radio_version">基带版本</string>
+    <string name="serial">序列号</string>
+    <string name="soc_model">SoC 型号</string>
+    <string name="soc_manufacturer">SoC 厂商</string>
+    <string name="odm_sku">ODM 型号</string>
+    <string name="sku">SKU 型号</string>
+    <string name="vbmeta_digest">VBMeta 摘要</string>
+
+    <string name="build_version_properties">系统版本号</string>
+    <string name="android_release">Android 版本</string>
+    <string name="sdk_int">SDK 版本</string>
+    <string name="preview_sdk_int">预览SDK</string>
+    <string name="build_incremental">增量号</string>
+    <string name="build_codename">开发代号</string>
+    <string name="security_patch">安全补丁日期</string>
+    <string name="media_performance_class">媒体性能等级</string>
+
+    <!-- ============ 新增：账号/谷歌账号 ============ -->
+    <string name="account_info">账号信息</string>
+    <string name="google_account">谷歌账号</string>
+    <string name="account_name">账号名</string>
+    <string name="account_type">账号类型</string>
+    <string name="disable_accounts">隐藏所有账号</string>
+
+    <!-- ============ 新增：电话标识符 ============ -->
+    <string name="telephony_identifiers">SIM/设备标识符</string>
+    <string name="imei">IMEI (卡槽1)</string>
+    <string name="imei2">IMEI (卡槽2)</string>
+    <string name="imsi">IMSI</string>
+    <string name="line1_number">手机号</string>
+    <string name="sim_serial_number">ICCID (SIM序列号)</string>
+    <string name="meid">MEID</string>
+    <string name="sim_country_iso">SIM国家代码</string>
+    <string name="network_country_iso">网络国家代码</string>
+    <string name="network_operator">网络运营商 (MCC+MNC)</string>
+    <string name="sim_operator_name">SIM运营商名</string>
+    <string name="network_operator_name">网络运营商名</string>
+    <string name="device_id_type">设备ID类型</string>
+
+    <!-- ============ 新增：蓝牙 ============ -->
+    <string name="bluetooth_info">蓝牙信息</string>
+    <string name="bluetooth_name">蓝牙名称</string>
+    <string name="bluetooth_address">蓝牙MAC地址</string>
+    <string name="disable_bluetooth">关闭蓝牙</string>
+
+    <!-- ============ 新增：广告ID ============ -->
+    <string name="advertising_info">广告标识符</string>
+    <string name="advertising_id">GAID (广告ID)</string>
+    <string name="lat_enabled">限制广告追踪 (LAT)</string>
+    <string name="oaid">OAID</string>
+    <string name="vaid">VAID</string>
+    <string name="aaid">AAID</string>
+
+    <!-- ============ 新增：其他硬件/DMR ID ============ -->
+    <string name="misc_identifiers">杂项标识符</string>
+    <string name="drm_device_id">Widevine DRM ID</string>
+    <string name="ethernet_mac">以太网MAC</string>
+    <string name="build_serial_method">Build.getSerial()</string>
+
+    <!-- ============ 新增：传感器 ============ -->
+    <string name="sensor_info">传感器</string>
+    <string name="disable_accelerometer">禁用加速度计</string>
+    <string name="disable_gyroscope">禁用陀螺仪</string>
+    <string name="disable_magnetometer">禁用磁力计</string>
+    <string name="disable_step_counter">禁用计步器</string>
+    <string name="disable_all_sensors">禁用所有传感器</string>
+
+    <!-- ============ 新增：USB / 调试 ============ -->
+    <string name="usb_debug_info">USB 与调试</string>
+    <string name="usb_state_charging_only">USB仅充电模式</string>
+    <string name="disable_usb_debugging">禁用ADB调试</string>
+
+    <!-- ============ 新增：用户空间 ============ -->
+    <string name="user_info">用户空间</string>
+    <string name="user_serial_number">用户序列号</string>
+    <string name="user_id">用户ID</string>
+
+    <!-- ============ 新增：网络扩展 ============ -->
+    <string name="network_ext">网络扩展</string>
+    <string name="ip_address">IP地址</string>
+    <string name="http_proxy_host">HTTP代理主机</string>
+    <string name="http_proxy_port">HTTP代理端口</string>
+    <string name="net_meteredness">网络计费类型</string>
+
+    <!-- ============ 新增：壁纸 ============ -->
+    <string name="wallpaper_info">壁纸</string>
+    <string name="wallpaper_min_width">壁纸最小宽度</string>
+    <string name="wallpaper_min_height">壁纸最小高度</string>
+
+    <!-- ============ 新增：强制截屏 ============ -->
+    <string name="screenshot_force_info">屏幕捕获</string>
+    <string name="force_screenshot_enabled">强制允许截屏（绕过 FLAG_SECURE）</string>
+
+    <!-- ============ 进阶反作弊增强 - 1. MediaProjection 录屏检测 ============ -->
+    <string name="mediaprojection_info">录屏/投屏检测</string>
+    <string name="disable_media_projection">隐藏正在进行的录制会话</string>
+    <string name="fake_virtual_display_count">虚拟显示器数量</string>
+
+    <!-- ============ 进阶反作弊增强 - 2. 剪贴板 ============ -->
+    <string name="clipboard_info">剪贴板</string>
+    <string name="disable_clipboard_read">禁止读取剪贴板（返回空）</string>
+    <string name="fake_clipboard_text">自定义剪贴板文本</string>
+
+    <!-- ============ 进阶反作弊增强 - 3. /proc Native 指纹 ============ -->
+    <string name="procfs_info">Native /proc 指纹</string>
+    <string name="disable_proc_fingerprint">隐藏 /proc/maps 中 LSPosed/Magisk 痕迹</string>
+    <string name="fake_cpu_model_name">CPU 型号 (cpuinfo model name)</string>
+    <string name="fake_mem_total_kb">总内存 MemTotal (单位 kB)</string>
+
+    <!-- ============ 进阶反作弊增强 - 4. Build Expect (Android 15+) ============ -->
+    <string name="build_expect_info">Build Expect 一致性校验</string>
+    <string name="expect_fingerprint">ro.build.expect.fingerprint</string>
+    <string name="expect_hardware">ro.build.expect.hardware</string>
+
+    <!-- ============ 进阶反作弊增强 - 5. GPU/GL 指纹 ============ -->
+    <string name="gpu_info">GPU / OpenGL 指纹</string>
+    <string name="gl_renderer">GL_RENDERER（渲染器）</string>
+    <string name="gl_vendor">GL_VENDOR（GPU厂商）</string>
+    <string name="gl_version">GL_VERSION（驱动版本）</string>
+    <string name="egl_vendor">EGL_VENDOR</string>
+    <string name="egl_version">EGL_VERSION</string>
+    <string name="disable_gpu_fingerprint">一键伪装为高通 Adreno 真机</string>
+
+    <!-- ============ 进阶反作弊增强 - 6. 安装来源 ============ -->
+    <string name="install_source_info">安装来源</string>
+    <string name="installer_package">安装来源包名</string>
+    <string name="fake_install_from_gplay">伪装为 Google Play 安装</string>
+    <string name="fake_install_initiating">发起安装包名 (API 34+)</string>
+    <string name="fake_install_originating">最初安装包名 (API 34+)</string>
+
+    <!-- ============ 进阶反作弊增强 - 7. 开机时长 / SystemClock ============ -->
+    <string name="uptime_info">运行时长 / 开机时间</string>
+    <string name="fake_uptime_one_week_old">伪装已运行 7 天（老设备）</string>
+    <string name="device_uptime_offset_ms">运行时长偏移（毫秒）</string>
+    <string name="fake_boot_completed_ts_ms">开机完成时间戳 (毫秒)</string>
 </resources>

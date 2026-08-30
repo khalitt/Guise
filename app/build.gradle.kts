@@ -13,12 +13,12 @@ plugins {
 
 android {
     namespace = "com.houvven.guise"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
         applicationId = namespace
         minSdk = 24
-        targetSdk = 35
+        targetSdk = 36
         val version = loadProperties(file("version.properties").path)
         versionCode = version.getProperty("version.code").toInt()
         versionName = version.getProperty("version.name")

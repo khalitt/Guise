@@ -1,0 +1,207 @@
+name: Build Guise (Android APK)
+
+# 触发条件：推送 / PR 到 main 分支，或手动触发
+on:
+  push:
+    branches: [ main, master, "**" ]
+    paths-ignore:
+      - "*.md"
+      - "**/.gitignore"
+      - "LICENSE"
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: "Build Type (debug / release)"
+        required: false
+        default: "debug"
+        type: choice
+        options: [ debug, release ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Gradle 8.6 + AGP 8.5 要求 JDK 17
+  JAVA_DISTRIBUTION: "temurin"
+  JAVA_VERSION: "17"
+  # Gradle 守护进程与缓存设置
+  GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.parallel=true -Dorg.gradle.caching=true -Dkotlin.daemon.jvm.options=-Xmx2g"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build APK (${{ matrix.build_type }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # workflow_dispatch 输入优先；否则默认两个都构建
+        build_type:
+          - ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.build_type || fromJSON('["debug","release"]') }}
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v4
+
+      - name: Setup JDK ${{ env.JAVA_VERSION }} (${{ env.JAVA_DISTRIBUTION }})
+        uses: actions/setup-java@v4
+        with:
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: "gradle"
+
+      # ------- Android SDK 36 安装处理 -------
+      # SDK 36 目前属于 Preview / 近期发布版本，
+      # 我们通过 sdkmanager 安装 platform;android-36 和 build-tools
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: "11076708" # cmdline-tools 12.0 (lts)
+          packages: |
+            platforms;android-36
+            platforms;android-35
+            platforms;android-34
+            build-tools;36.0.0
+            build-tools;35.0.0
+            build-tools;34.0.0
+
+      # 兜底：如果 SDK 36 尚未稳定发布，允许接受 SDK license 并使用 preview
+      - name: Accept Android SDK licenses
+        run: |
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager --update --channel=0 --include_obsolete=false >/dev/null 2>&1 || true
+          # 安装 SDK 36 preview (若正常 packages 中未包含)
+          sdkmanager --install --channel=3 "platforms;android-36" "build-tools;36.0.0" 2>&1 | tail -n 20 || true
+
+      # ------- Gradle Caching (Build Cache + 依赖缓存) -------
+      - name: Cache Gradle build outputs
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            **/.gradle/configuration-cache
+            **/build/tmp/kotlin-classes
+            **/build/kotlin
+          key: guise-gradle-${{ runner.os }}-jdk${{ env.JAVA_VERSION }}-${{ matrix.build_type }}-${{ hashFiles('**/*.gradle.kts', '**/gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            guise-gradle-${{ runner.os }}-jdk${{ env.JAVA_VERSION }}-${{ matrix.build_type }}-
+            guise-gradle-${{ runner.os }}-jdk${{ env.JAVA_VERSION }}-
+            guise-gradle-${{ runner.os }}-
+
+      # ------- 生成并写入 Debug Keystore（Release 也用 Debug key，方便云端产物直接能装） -------
+      - name: Generate debug keystore
+        run: |
+          keytool -genkeypair -v \
+            -keystore $HOME/debug.keystore \
+            -alias androiddebugkey \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -storepass android \
+            -keypass android \
+            -dname "CN=Guise CI, OU=Dev, O=Guise, L=CN, S=CN, C=CN" 2>&1 | tail -n 3
+          ls -lah $HOME/debug.keystore
+
+      - name: Prepare signing (override with debug keystore for both build types)
+        env:
+          # 通过环境变量注入到 build.gradle.kts（若 build.gradle.kts 未引用，也不影响 debug）
+          ANDROID_KEYSTORE: ${{ env.HOME }}/debug.keystore
+          ANDROID_KEY_ALIAS: androiddebugkey
+          ANDROID_KEYSTORE_PASS: android
+          ANDROID_KEY_PASS: android
+        run: |
+          # 兼容 release：若原配置中需要 signingConfig.release，我们把环境变量注入到 local.properties
+          cat >> gradle.properties <<EOF
+          # [CI] Signing override (added by workflow)
+          guise.storeFile=${HOME}/debug.keystore
+          guise.storePassword=android
+          guise.keyAlias=androiddebugkey
+          guise.keyPassword=android
+          EOF
+          cat gradle.properties | tail -n 6
+
+      # ------- 真正执行构建 -------
+      - name: Build APK (${{ matrix.build_type }})
+        run: |
+          chmod +x ./gradlew
+          ./gradlew \
+            :app:assemble${{ matrix.build_type^ }} \
+            --no-daemon \
+            --build-cache \
+            --stacktrace \
+            --configuration-cache-problems=warn \
+            -Pandroid.injected.signing.store.file=$HOME/debug.keystore \
+            -Pandroid.injected.signing.store.password=android \
+            -Pandroid.injected.signing.key.alias=androiddebugkey \
+            -Pandroid.injected.signing.key.password=android \
+            2>&1 | tail -n 80
+
+      # ------- 上传 APK 产物 -------
+      - name: Locate APK files
+        id: locate
+        if: always()
+        run: |
+          echo "--- APKs found ---"
+          find . -type f -iname "*.apk" -not -path "*/node_modules/*" 2>/dev/null | sort
+          # 输出到 outputs 汇总
+          mkdir -p apk-artifacts
+          find . -type f -iname "*.apk" -not -path "*/node_modules/*" -exec cp -v {} apk-artifacts/ \; 2>/dev/null || true
+          ls -lah apk-artifacts/ 2>/dev/null || true
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: Guise-${{ matrix.build_type }}-apk
+          path: |
+            apk-artifacts/*.apk
+            app/build/outputs/apk/**/*.apk
+          retention-days: 30
+          compression-level: 6
+
+      # ------- 上传 mapping/日志（debug release 失败排错） -------
+      - name: Upload build logs on failure
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: Build-logs-${{ matrix.build_type }}-${{ github.sha }}
+          path: |
+            **/build/reports/**
+            **/build/outputs/logs/**
+            ~/.gradle/daemon/**/*.log
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # 单独的 job：产出 version 信息供 Release 使用
+  release-summary:
+    needs: build
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download all built artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: apks-download
+          merge-multiple: true
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          fail_on_unmatched_files: false
+          files: |
+            apks-download/*.apk
