@@ -134,10 +134,15 @@ jobs:
 
       # ------- 真正执行构建 -------
       - name: Build APK (${{ matrix.build_type }})
+        env:
+          BUILD_TYPE_LOWER: ${{ matrix.build_type }}
         run: |
           chmod +x ./gradlew
+          # Bash 内做首字母大写：debug → Debug, release → Release
+          TASK_NAME="assemble${BUILD_TYPE_LOWER^}"
+          echo "[CI] -> Running :app:${TASK_NAME}"
           ./gradlew \
-            :app:assemble${{ matrix.build_type^ }} \
+            ":app:${TASK_NAME}" \
             --no-daemon \
             --build-cache \
             --stacktrace \
