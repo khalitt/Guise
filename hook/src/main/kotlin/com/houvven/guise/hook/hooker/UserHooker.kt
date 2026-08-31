@@ -1,7 +1,6 @@
 package com.houvven.guise.hook.hooker
 
-import android.os.Process
-import com.highcapable.betterandroid.system.extension.tool.SystemVersion
+import android.os.Build
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
 import com.highcapable.yukihookapi.hook.factory.field
 import com.highcapable.yukihookapi.hook.factory.method
@@ -40,7 +39,7 @@ internal class UserHooker(private val profile: HookProfiles) : YukiBaseHooker() 
             }?.ignored()?.hookAll()?.replaceTo(uid)
 
             // UserHandle.getIdentifier() (Android 14+ 新增)
-            if (SystemVersion.has(SystemVersion.UPSIDE_DOWN_CAKE)) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                 runCatching {
                     UserHandleClass!!.method { name("getIdentifier") }.ignored()
                 }.getOrNull()?.hookAll()?.replaceTo(uid)

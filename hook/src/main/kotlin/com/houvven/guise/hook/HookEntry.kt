@@ -64,7 +64,7 @@ object HookEntry : IYukiHookXposedInit {
             return
         }
         loadApp(
-            isExcludeSelf = true,
+            true,
             *buildList {
                 // ---------------- 原有 Hooker ----------------
                 add(PackageHooker(profiles))

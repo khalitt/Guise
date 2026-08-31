@@ -1,34 +1,28 @@
-name: Build Guise (Android APK)
+name: Build Guise APK
 
-# 触发条件：推送 / PR 到 main 分支，或手动触发
 on:
   push:
-    branches: [ main, master, "**" ]
+    branches:
+      - "**"
     paths-ignore:
       - "*.md"
       - "**/.gitignore"
       - "LICENSE"
   pull_request:
-    branches: [ main, master ]
   workflow_dispatch:
     inputs:
       build_type:
-        description: "Build Type (debug / release)"
-        required: false
-        default: "debug"
+        description: Build type
+        required: true
+        default: debug
         type: choice
-        options: [ debug, release ]
+        options:
+          - debug
+          - release
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-
-env:
-  # Gradle 8.6 + AGP 8.5 要求 JDK 17
-  JAVA_DISTRIBUTION: "temurin"
-  JAVA_VERSION: "17"
-  # Gradle 守护进程与缓存设置
-  GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g -Dorg.gradle.parallel=true -Dorg.gradle.caching=true -Dkotlin.daemon.jvm.options=-Xmx2g"
 
 permissions:
   contents: read
@@ -40,294 +34,105 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # workflow_dispatch 输入优先；否则默认两个都构建
-        build_type:
-          - ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.build_type || fromJSON('["debug","release"]') }}
+        build_type: ${{ fromJSON(github.event_name == 'workflow_dispatch' && format('["{0}"]', inputs.build_type) || '["debug","release"]') }}
 
     steps:
       - name: Checkout sources
         uses: actions/checkout@v5
-        with:
-          submodules: recursive
-          fetch-depth: 0
 
       - name: Validate Gradle wrapper
         uses: gradle/actions/wrapper-validation@v5
 
-      - name: Setup JDK ${{ env.JAVA_VERSION }} (${{ env.JAVA_DISTRIBUTION }})
+      - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
-          distribution: ${{ env.JAVA_DISTRIBUTION }}
-          java-version: ${{ env.JAVA_VERSION }}
-          cache: "gradle"
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
 
-      # ==================================================================
-      # Android SDK 安装
-      # [2026-08 最佳实践] GitHub ubuntu-latest (Ubuntu 24.04 20260804+) 预装了完整 Android SDK：
-      #   - ANDROID_HOME = /usr/local/lib/android/sdk
-      #   - platforms:  android-37 / 37.1 / 36 / 36.1 / 35 / 34
-      #   - build-tools: 37.0.0 / 36.0.0 / 35.0.0 / 34.0.0 等
-      #   - NDK、platform-tools、cmdline-tools、m2repository 都已就位
-      # 因此我们不再使用 android-actions/setup-android（它会尝试重写 cmdline-tools 导致与预装目录冲突，
-      # Step 5 直接失败 — 连续 3 次 CI 都栽在这个 action）。
-      # 本步骤只做：
-      #   1. 显式导出 ANDROID_SDK_ROOT / ANDROID_HOME 并把 sdkmanager 所在 bin 加入 PATH
-      #   2. 刷新 licenses 并按需安装 36/37 缺失包（因已预装，99% 的情况直接 no-op）
-      #   3. 写 local.properties sdk.dir 供 AGP 读取
-      # ==================================================================
-      - name: Setup Android SDK (use runner preinstalled)
+      - name: Install Android SDK packages
         run: |
-          set -x
-          export ANDROID_HOME=/usr/local/lib/android/sdk
-          export ANDROID_SDK_ROOT=${ANDROID_HOME}
-          # 允许 预装 cmdline-tools/latest 或 20.0 两种目录名
-          export PATH="${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/cmdline-tools/20.0/bin:${ANDROID_HOME}/cmdline-tools/12.0/bin:${ANDROID_HOME}/platform-tools:${PATH}"
+          test -n "${ANDROID_HOME:-}"
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager \
+            "platforms;android-35" \
+            "build-tools;34.0.0" \
+            "build-tools;35.0.0" \
+            "platform-tools"
 
-          echo "[CI] ANDROID_HOME=${ANDROID_HOME}"
-          echo "[CI] ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT}"
-          echo "[CI] PATH=${PATH}"
-
-          # 若预装的 cmdline-tools 太旧 (<20.0 会解析不出 36.1 这种 Major.Minor 包)，
-          # 先在不破坏原路径的情况下升级到 cmdline-tools latest；结果可能落到 latest-2 目录，按社区方案 mv 回去
-          if ! which sdkmanager >/dev/null 2>&1; then
-            echo "[CI] sdkmanager not found in PATH - searching"
-            find "${ANDROID_HOME}/cmdline-tools" -name sdkmanager 2>/dev/null || true
-          fi
-          SDK_MANAGER="$(which sdkmanager 2>/dev/null || true)"
-          echo "[CI] sdkmanager resolved: ${SDK_MANAGER}"
-
-          # 允许 sdkmanager 找不到时静默跳过（极端情况），因为 runner 镜像已经带了 platform-35，够编译用
-          if [ -n "${SDK_MANAGER}" ]; then
-            yes 2>/dev/null | "${SDK_MANAGER}" --licenses >/dev/null 2>&1 || true
-            "${SDK_MANAGER}" --update --channel=0 --include_obsolete=false >/dev/null 2>&1 || true
-            # 确保我们需要的三个关键 Platform + build-tools 都在，缺失则补装
-            "${SDK_MANAGER}" --install \
-              "platforms;android-37" "platforms;android-36" "platforms;android-35" \
-              "build-tools;37.0.0" "build-tools;36.0.0" "build-tools;35.0.0" \
-              "platform-tools" "tools" 2>&1 | tail -n 30 || true
-            # 社区方案：若升级 cmdline-tools latest 落到 latest-2，则替换
-            if [ -d "${ANDROID_HOME}/cmdline-tools/latest-2" ]; then
-              rm -rf "${ANDROID_HOME}/cmdline-tools/latest"
-              mv "${ANDROID_HOME}/cmdline-tools/latest-2" "${ANDROID_HOME}/cmdline-tools/latest"
-            fi
-          fi
-
-          # ---------- 最终产物列一下，便于排障 ----------
-          echo "[CI] Installed platforms:"
-          ls "${ANDROID_HOME}/platforms" 2>/dev/null || true
-          echo "[CI] Installed build-tools:"
-          ls "${ANDROID_HOME}/build-tools" 2>/dev/null || true
-          echo "[CI] cmdline-tools dirs:"
-          ls "${ANDROID_HOME}/cmdline-tools" 2>/dev/null || true
-
-          # ---------- 写 local.properties（若有 sdk.dir 行则替换，否则追加）----------
-          if [ -f local.properties ]; then
-            if grep -q '^sdk\.dir=' local.properties; then
-              sed -i "s|^sdk\.dir=.*|sdk.dir=${ANDROID_HOME}|" local.properties
-            else
-              echo "sdk.dir=${ANDROID_HOME}" >> local.properties
-            fi
-          else
-            echo "sdk.dir=${ANDROID_HOME}" > local.properties
-          fi
-          echo "[local.properties]"
-          cat local.properties
-
-          # ---------- 把 ANDROID_HOME/PATH 写到 GITHUB_ENV，让后续 step 继承 ----------
-          echo "ANDROID_HOME=${ANDROID_HOME}"            >> "$GITHUB_ENV"
-          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT}"    >> "$GITHUB_ENV"
-          echo "PATH=${PATH}"                            >> "$GITHUB_ENV"
-
-      # ------- Gradle Caching (Build Cache + 依赖缓存) -------
-      - name: Cache Gradle build outputs
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-            **/.gradle/configuration-cache
-            **/build/tmp/kotlin-classes
-            **/build/kotlin
-          key: guise-gradle-${{ runner.os }}-jdk${{ env.JAVA_VERSION }}-${{ matrix.build_type }}-${{ hashFiles('**/*.gradle.kts', '**/gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties') }}
-          restore-keys: |
-            guise-gradle-${{ runner.os }}-jdk${{ env.JAVA_VERSION }}-${{ matrix.build_type }}-
-            guise-gradle-${{ runner.os }}-jdk${{ env.JAVA_VERSION }}-
-            guise-gradle-${{ runner.os }}-
-
-      # ------- 生成并写入 Debug Keystore（Release 也用 Debug key，方便云端产物直接能装） -------
-      - name: Generate debug keystore
+      - name: Generate CI signing key
         run: |
-          keytool -genkeypair -v \
-            -keystore $HOME/debug.keystore \
+          keytool -genkeypair \
+            -keystore "$RUNNER_TEMP/guise-ci.keystore" \
+            -storepass android \
             -alias androiddebugkey \
+            -keypass android \
             -keyalg RSA \
             -keysize 2048 \
             -validity 10000 \
-            -storepass android \
-            -keypass android \
-            -dname "CN=Guise CI, OU=Dev, O=Guise, L=CN, S=CN, C=CN" 2>&1 | tail -n 3
-          ls -lah $HOME/debug.keystore
+            -dname "CN=Guise CI, OU=Development, O=Guise, C=CN"
 
-      - name: Prepare signing (override with debug keystore for both build types)
+      - name: Build APK
         env:
-          # 通过环境变量注入到 build.gradle.kts（若 build.gradle.kts 未引用，也不影响 debug）
-          # 注意：$HOME / $ANDROID_HOME 是 shell 变量，只能在 run: 段里引用，不能写在 env: 里的 ${{ }}
-          ANDROID_KEY_ALIAS: androiddebugkey
-          ANDROID_KEYSTORE_PASS: android
-          ANDROID_KEY_PASS: android
+          BUILD_TYPE: ${{ matrix.build_type }}
         run: |
-          # 兼容 release：若原配置中需要 signingConfig.release，我们把环境变量注入到 local.properties
-          cat >> gradle.properties <<EOF
-          # [CI] Signing override (added by workflow)
-          guise.storeFile=${HOME}/debug.keystore
-          guise.storePassword=android
-          guise.keyAlias=androiddebugkey
-          guise.keyPassword=android
-          EOF
-          cat gradle.properties | tail -n 6
-
-      # ------- 真正执行构建 -------
-      # 注意：此 step 结束后必须产出 1 个体积合理的 APK (>= 500KB)，否则直接把 CI 标红，
-      # 避免把 intermediate 目录中的几 KB manifest/apk_list 占位"小apk"当结果上传(之前出现 2.59KB 产物)
-      - name: Build APK (${{ matrix.build_type }})
-        env:
-          BUILD_TYPE_LOWER: ${{ matrix.build_type }}
-        run: |
-          chmod +x ./gradlew
-          TASK_NAME=":app:assemble${BUILD_TYPE_LOWER^}"
-          echo "[CI] Gradle task -> ${TASK_NAME}"
-          echo "[CI] JAVA_HOME=${JAVA_HOME}"
-          echo "[CI] ANDROID_HOME=${ANDROID_HOME}"
-
-          # 先做一次 --dry-run，确认 Gradle 能识别我们的任务(不存在会提前在此处报错，避免真 build 了 60s 却 UP-TO-DATE)
-          echo "=== Gradle --dry-run (确认 assemble 任务真实存在且会执行) ==="
-          ./gradlew "${TASK_NAME}" --dry-run --no-daemon --configuration-cache-problems=warn 2>&1 \
-            | tail -n 40 || true
-
-          echo "=== 开始正式构建 ==="
-          # 把整个 build 日志落盘，失败时可以被"Upload build logs on failure"收走
-          set +e
-          ./gradlew "${TASK_NAME}" \
+          set -euo pipefail
+          variant="${BUILD_TYPE^}"
+          ./gradlew ":app:assemble${variant}" \
             --no-daemon \
             --build-cache \
             --stacktrace \
-            --info \
-            --configuration-cache-problems=warn \
-            -Pandroid.injected.signing.store.file="$HOME/debug.keystore" \
+            -Pandroid.injected.signing.store.file="$RUNNER_TEMP/guise-ci.keystore" \
             -Pandroid.injected.signing.store.password=android \
             -Pandroid.injected.signing.key.alias=androiddebugkey \
-            -Pandroid.injected.signing.key.password=android \
-            2>&1 | tee build-output.log | tail -n 200
-          GRADLE_RC=${PIPESTATUS[0]}
-          set -e
+            -Pandroid.injected.signing.key.password=android
 
-          echo "[CI] Gradle exit code: ${GRADLE_RC}"
+      - name: Validate APK outputs
+        env:
+          BUILD_TYPE: ${{ matrix.build_type }}
+        run: |
+          set -euo pipefail
+          output_dir="app/build/outputs/apk/${BUILD_TYPE}"
+          artifact_dir="apk-artifacts/${BUILD_TYPE}"
+          mkdir -p "$artifact_dir"
 
-          # ---------- 无论成败，都把 outputs 目录列出来 ----------
-          echo "=== app/build/outputs/apk 目录内容 ==="
-          if [ -d app/build/outputs/apk ]; then
-            find app/build/outputs/apk -maxdepth 5 -type f -print0 2>/dev/null | xargs -0 -r ls -lh
-          else
-            echo "  <directory not found — build 完全没有产生任何 outputs>"
-          fi
-
-          if [ "${GRADLE_RC}" -ne 0 ]; then
-            echo "::error::Gradle assemble 任务失败，exit_code=${GRADLE_RC}"
-            exit "${GRADLE_RC}"
-          fi
-
-          # ---------- 关键校验：必须存在 >= 500KB 的 .apk 产物 ----------
-          echo "=== 体积校验：仅接受 >= 500KB 的 APK 文件，排除 -unsigned / -unaligned ==="
-          mapfile -t VALID_APKS < <(
-            find app/build/outputs/apk \
-              -type f \( -iname "*.apk" \) \
-              -size +500k \
-              ! -iname "*-unsigned.apk" \
-              ! -iname "*-unaligned.apk" \
-              2>/dev/null || true
+          mapfile -d '' apks < <(
+            find "$output_dir" -maxdepth 1 -type f -name "*.apk" \
+              ! -name "*-unsigned.apk" -size +500k -print0
           )
-
-          echo "找到有效 APK: ${#VALID_APKS[@]} 个"
-          for f in "${VALID_APKS[@]}"; do
-            ls -lh "$f"
-          done
-
-          if [ "${#VALID_APKS[@]}" -eq 0 ]; then
-            echo "::error::没有找到任何体积 >= 500KB 且已签名的 APK 产物。可能 assemble 任务是空的、或签名失败生成了 unsigned.apk。"
-            # 补充诊断：列出所有小 APK 文件名，帮助定位到底捞到了什么
-            echo "=== 诊断：所有 .apk 文件(含小体积) ==="
-            find app/build/outputs/apk -type f -iname "*.apk" -exec ls -lh {} \; 2>/dev/null || true
-            echo "=== 诊断：build-output.log 末尾 80 行 ==="
-            tail -n 80 build-output.log 2>/dev/null || true
+          if (( ${#apks[@]} == 0 )); then
+            echo "::error::No signed APK larger than 500 KiB was produced in ${output_dir}"
+            find app/build/outputs/apk -type f -name "*.apk" -exec ls -lh {} \; || true
             exit 1
           fi
 
-          # ---------- 归档合格 APK 到 apk-artifacts ----------
-          mkdir -p apk-artifacts
-          for f in "${VALID_APKS[@]}"; do
-            cp -v "$f" apk-artifacts/
+          for apk in "${apks[@]}"; do
+            "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$apk"
+            unzip -Z1 "$apk" > "$RUNNER_TEMP/guise-apk-contents.txt"
+            grep -Fxq "AndroidManifest.xml" "$RUNNER_TEMP/guise-apk-contents.txt"
+            grep -Fxq "classes.dex" "$RUNNER_TEMP/guise-apk-contents.txt"
+            cp "$apk" "$artifact_dir/"
           done
-          echo "=== apk-artifacts 目录最终内容 ==="
-          ls -lh apk-artifacts/
 
-      # ------- 上传 APK 产物 -------
-      # [注意] 只上传 apk-artifacts 目录中我们已经校验过的合格 APK
-      #       不再使用 app/build/outputs/apk/**/*.apk 通配，它会把 intermediate 子目录下的几 KB
-      #       manifest/apk_list placeholder 当 APK 一并打包进 artifact，造成产物只有 2~3 KB
-      - name: Locate APK files (summary listing only)
-        id: locate
-        if: always()
-        run: |
-          echo "--- Summary of apk-artifacts ---"
-          if [ -d apk-artifacts ]; then
-            ls -lah apk-artifacts/ || true
-            # 计算每个文件 sha256，方便用户在 summary 里比对
-            (cd apk-artifacts && for f in *.apk; do [ -f "$f" ] && sha256sum "$f" || true; done) || true
-          else
-            echo "<apk-artifacts 目录不存在>"
-          fi
+          find "$artifact_dir" -type f -name "*.apk" -exec ls -lh {} \;
+          (cd "$artifact_dir" && sha256sum ./*.apk)
 
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v5
-        if: success()
+      - name: Upload APK artifacts
+        uses: actions/upload-artifact@v6
         with:
           name: Guise-${{ matrix.build_type }}-apk
-          path: apk-artifacts/*.apk
-          retention-days: 30
-          compression-level: 6
+          path: apk-artifacts/${{ matrix.build_type }}/*.apk
           if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
 
-      # ------- 上传 mapping/日志（debug release 失败排错） -------
-      - name: Upload build logs on failure
+      - name: Upload build reports on failure
         if: failure()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
-          name: Build-logs-${{ matrix.build_type }}-${{ github.sha }}
+          name: Build-reports-${{ matrix.build_type }}-${{ github.sha }}
           path: |
             **/build/reports/**
             **/build/outputs/logs/**
-            ~/.gradle/daemon/**/*.log
-          retention-days: 7
           if-no-files-found: ignore
-
-  # 单独的 job：产出 version 信息供 Release 使用
-  release-summary:
-    needs: build
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v5
-      - name: Download all built artifacts
-        uses: actions/download-artifact@v5
-        with:
-          path: apks-download
-          merge-multiple: true
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          generate_release_notes: true
-          fail_on_unmatched_files: false
-          files: |
-            apks-download/*.apk
+          retention-days: 7

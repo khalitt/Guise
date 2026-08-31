@@ -8,9 +8,7 @@ plugins {
 
 android {
     namespace = "com.houvven.guise.hook"
-    // 同 app：compileSdk=37，可在编译期直接引用到 Android 16 / 17 的新常量和反射目标类签名，
-    // 运行时再通过 SystemVersion.require() 做版本保护，两者不冲突。
-    compileSdk = 37
+    compileSdk = 35
 
     defaultConfig {
         minSdk = 24

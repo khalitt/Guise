@@ -1,15 +1,14 @@
 package com.houvven.guise.hook.hooker
 
 import android.app.Activity
+import android.os.Build
 import android.view.Window
 import android.view.WindowManager
-import com.highcapable.betterandroid.system.extension.tool.SystemVersion
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
-import com.hhighcapable.yukihookapi.hook.factory.field
-import com.hhighcapable.yukihookapi.hook.factory.method
-import com.hhighcapable.yukihookapi.hook.factory.toClass
-import com.hhighcapable.yukihookapi.hook.type.java.BooleanType
-import com.hhighcapable.yukihookapi.hook.type.java.IntType
+import com.highcapable.yukihookapi.hook.factory.method
+import com.highcapable.yukihookapi.hook.factory.toClass
+import com.highcapable.yukihookapi.hook.type.java.BooleanType
+import com.highcapable.yukihookapi.hook.type.java.IntType
 import com.houvven.guise.hook.profile.HookProfiles
 
 /**
@@ -39,10 +38,10 @@ internal class ScreenshotHooker(private val profile: HookProfiles) : YukiBaseHoo
         hookWindowGetAttributes()
         hookActivityLifecycle()
 
-        if (SystemVersion.has(SystemVersion.UPSIDE_DOWN_CAKE)) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             hookPrivacyMode()
         }
-        if (SystemVersion.has(SystemVersion.S)) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             hookSurfaceControl()
         }
     }
@@ -114,7 +113,7 @@ internal class ScreenshotHooker(private val profile: HookProfiles) : YukiBaseHoo
             }.ignored().hookAll().after {
                 val activity = instance as? Activity ?: return@after
                 activity.window?.clearFlags(FLAG_SECURE)
-                if (SystemVersion.has(SystemVersion.TIRAMISU)) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     runCatching { activity.setRecentsScreenshotEnabled(true) }
                 }
             }

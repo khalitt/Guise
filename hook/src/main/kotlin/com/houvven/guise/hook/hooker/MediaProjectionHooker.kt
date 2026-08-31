@@ -1,9 +1,9 @@
 package com.houvven.guise.hook.hooker
 
-import com.highcapable.betterandroid.system.extension.tool.SystemVersion
+import android.os.Build
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
-import com.hhighcapable.yukihookapi.hook.factory.method
-import com.hhighcapable.yukihookapi.hook.factory.toClass
+import com.highcapable.yukihookapi.hook.factory.method
+import com.highcapable.yukihookapi.hook.factory.toClass
 import com.highcapable.yukihookapi.hook.type.java.IntType
 import com.houvven.guise.hook.profile.HookProfiles
 
@@ -32,7 +32,7 @@ internal class MediaProjectionHooker(private val profile: HookProfiles) : YukiBa
 
     /** Android 14 新增: MediaProjectionManager.getActiveProjectionTokenCount() */
     private fun hookActiveProjectionToken() {
-        if (!SystemVersion.has(SystemVersion.UPSIDE_DOWN_CAKE)) return
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return
         val mpmClass = runCatching {
             "android.media.projection.MediaProjectionManager".toClass()
         }.getOrNull() ?: return
@@ -68,16 +68,21 @@ internal class MediaProjectionHooker(private val profile: HookProfiles) : YukiBa
         val displayClass = "android.view.Display".toClass()
         val displayFlagVirtualField = runCatching {
             displayClass.getField("FLAG_VIRTUAL").apply { isAccessible = true }.getInt(null)
-        }.getOrElse(1 shl 4) // 0x10 兼容
+        }.getOrElse { 1 shl 4 } // 0x10 兼容
 
         val getDisplaysMethods = listOf(
             runCatching { dmClass.method { name("getDisplays") } }.getOrNull(),
-            runCatching { dmClass.method { name("getDisplays") }.param(IntType) }.getOrNull()
+            runCatching {
+                dmClass.method {
+                    name("getDisplays")
+                    param(IntType)
+                }
+            }.getOrNull()
         )
         getDisplaysMethods.forEach { method ->
             method?.hookAll()?.after {
                 val arr = result as? Array<*> ?: return@after
-                result = arr.filter { d ->
+                val filtered = arr.filter { d ->
                     if (d == null) false
                     else {
                         val flags = runCatching {
@@ -85,15 +90,12 @@ internal class MediaProjectionHooker(private val profile: HookProfiles) : YukiBa
                         }.getOrDefault(0)
                         flags and displayFlagVirtualField == 0  // 保留非 VIRTUAL
                     }
-                }.toTypedArray().apply {
-                    java.lang.reflect.Array.newInstance(displayClass, size)
-                        .let { target ->
-                            forEachIndexed { i, v ->
-                                java.lang.reflect.Array.set(target, i, v)
-                            }
-                            result = target
-                        }
                 }
+                val target = java.lang.reflect.Array.newInstance(displayClass, filtered.size)
+                filtered.forEachIndexed { index, display ->
+                    java.lang.reflect.Array.set(target, index, display)
+                }
+                result = target
             }
         }
     }
@@ -107,7 +109,7 @@ internal class MediaProjectionHooker(private val profile: HookProfiles) : YukiBa
                 val flags = result as? Int ?: return@after
                 val private = runCatching {
                     displayClass.getField("FLAG_PRIVATE").getInt(null)
-                }.getOrElse(1 shl 5)
+                }.getOrElse { 1 shl 5 }
                 result = flags and private.inv()
             }
         }

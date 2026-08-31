@@ -5,7 +5,7 @@ import android.content.ClipDescription
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
 import com.highcapable.yukihookapi.hook.factory.method
 import com.highcapable.yukihookapi.hook.factory.toClass
-import com.hhighcapable.yukihookapi.hook.type.java.IntType
+import com.highcapable.yukihookapi.hook.type.java.IntType
 import com.houvven.guise.hook.profile.HookProfiles
 
 /**

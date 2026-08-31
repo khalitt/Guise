@@ -1,7 +1,7 @@
 package com.houvven.guise.hook.hooker
 
 import android.accounts.Account
-import com.highcapable.betterandroid.system.extension.tool.SystemVersion
+import android.os.Build
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
 import com.highcapable.yukihookapi.hook.factory.method
 import com.highcapable.yukihookapi.hook.type.java.StringClass
@@ -25,7 +25,7 @@ internal class AccountHooker(private val profile: HookProfiles) : YukiBaseHooker
         AccountManagerClass ?: return
         hookGetAccounts()
         hookGetAccountsByType()
-        if (SystemVersion.has(SystemVersion.JB_MR1)) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
             hookGetAccountsAsUser()
         }
     }

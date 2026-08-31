@@ -1,6 +1,6 @@
 package com.houvven.guise.hook.hooker
 
-import com.highcapable.betterandroid.system.extension.tool.SystemVersion
+import android.os.Build
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
 import com.highcapable.yukihookapi.hook.factory.method
 import com.highcapable.yukihookapi.hook.type.java.IntType
@@ -70,7 +70,7 @@ internal class TelephonyInfoHooker(private val profile: HookProfiles) : YukiBase
         }
 
         // Android 14+ getDeviceIdType()
-        if (SystemVersion.has(SystemVersion.UPSIDE_DOWN_CAKE)) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             profile.deviceIdType?.let { type ->
                 TelephonyManagerClass.method {
                     name("getDeviceIdType")

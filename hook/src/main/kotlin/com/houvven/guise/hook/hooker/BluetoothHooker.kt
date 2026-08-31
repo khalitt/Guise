@@ -50,7 +50,7 @@ internal class BluetoothHooker(private val profile: HookProfiles) : YukiBaseHook
                 instance?.let { inst ->
                     BluetoothAdapterClass.field {
                         name("mName")
-                    }.ignored().get(inst)?.set(inst, name)
+                    }.ignored().get(inst)?.set(name)
                 }
             }
             // 3. getDefaultAdapter()得到对象后替换字段
@@ -61,7 +61,7 @@ internal class BluetoothHooker(private val profile: HookProfiles) : YukiBaseHook
                     runCatching {
                         BluetoothAdapterClass.field {
                             name("mName")
-                        }.ignored().get(adapter)?.set(adapter, name)
+                        }.ignored().get(adapter)?.set(name)
                     }
                 }
             }
@@ -81,7 +81,7 @@ internal class BluetoothHooker(private val profile: HookProfiles) : YukiBaseHook
                     runCatching {
                         BluetoothAdapterClass.field {
                             name("mAddress")
-                        }.ignored().get(adapter)?.set(adapter, addr)
+                        }.ignored().get(adapter)?.set(addr)
                     }
                 }
             }

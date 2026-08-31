@@ -2,13 +2,12 @@ package com.houvven.guise.hook.hooker
 
 import android.content.pm.ApplicationInfo
 import android.content.pm.InstallSourceInfo
-import com.highcapable.betterandroid.system.extension.tool.SystemVersion
-import com.hhighcapable.yukihookapi.hook.entity.YukiBaseHooker
-import com.hhighcapable.yukihookapi.hook.factory.field
-import com.hhighcapable.yukihookapi.hook.factory.method
-import com.hhighcapable.yukihookapi.hook.factory.toClass
-import com.hhighcapable.yukihookapi.hook.type.java.IntType
-import com.hhighcapable.yukihookapi.hook.type.java.StringClass
+import android.os.Build
+import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
+import com.highcapable.yukihookapi.hook.factory.method
+import com.highcapable.yukihookapi.hook.factory.toClass
+import com.highcapable.yukihookapi.hook.type.java.IntType
+import com.highcapable.yukihookapi.hook.type.java.StringClass
 import com.houvven.guise.hook.profile.HookProfiles
 
 /**
@@ -52,7 +51,7 @@ internal class InstallSourceHooker(private val profile: HookProfiles) : YukiBase
         if (!enabled) return
         hookPackageManagerInstaller()
         hookApplicationInfo()
-        if (SystemVersion.has(SystemVersion.R)) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             hookInstallSourceInfo()
         }
     }
@@ -72,8 +71,8 @@ internal class InstallSourceHooker(private val profile: HookProfiles) : YukiBase
     /** ApplicationInfo.packageInstallerName (API 30+) 这个字段是只读的，一般通过构造ApplicationInfo的field设置 */
     private fun hookApplicationInfo() {
         runCatching {
-            ApplicationInfo::class.java.field {
-                name("packageInstallerName")
+            ApplicationInfo::class.java.getDeclaredField("packageInstallerName").apply {
+                isAccessible = true
             }
         }.onSuccess { field ->
             // 命中点：PackageParser.generateApplicationInfo 返回的ApplicationInfo实例，我们无法精确hook

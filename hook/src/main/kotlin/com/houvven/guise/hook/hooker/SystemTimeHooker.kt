@@ -1,9 +1,9 @@
 package com.houvven.guise.hook.hooker
 
 import android.os.SystemClock
-import com.hhighcapable.yukihookapi.hook.entity.YukiBaseHooker
-import com.hhighcapable.yukihookapi.hook.factory.method
-import com.hhighcapable.yukihookapi.hook.factory.toClass
+import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
+import com.highcapable.yukihookapi.hook.factory.method
+import com.highcapable.yukihookapi.hook.factory.toClass
 import com.houvven.guise.hook.profile.HookProfiles
 
 /**

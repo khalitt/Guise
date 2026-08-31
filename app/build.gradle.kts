@@ -13,12 +13,7 @@ plugins {
 
 android {
     namespace = "com.houvven.guise"
-    // 2026-08 更新：GitHub ubuntu-latest runner (20260804 镜像) 已正式预装
-    //   platforms: android-37 / 37.1 / 36.1 / 36 / 35 / 34
-    //   build-tools: 37.0.0 / 36.0.0 / 36.1.0 / 35.0.0 / 34.0.0
-    // 所以 compileSdk 可以安全升到最新 SDK 37；targetSdk 保持 35 (Android 15 正式版)
-    // 避免高 targetSdk 引入的"前台服务类型/图片 intent 豁免/后台安装"等一系列合规限制。
-    compileSdk = 37
+    compileSdk = 35
 
     defaultConfig {
         applicationId = namespace

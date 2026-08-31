@@ -1,7 +1,7 @@
 package com.houvven.guise.hook.hooker
 
 import android.net.NetworkCapabilities
-import com.highcapable.betterandroid.system.extension.tool.SystemVersion
+import android.os.Build
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
 import com.highcapable.yukihookapi.hook.factory.current
 import com.highcapable.yukihookapi.hook.factory.method
@@ -84,7 +84,7 @@ internal class NetworkHooker(private val profile: HookProfiles) : YukiBaseHooker
      *   METEREDNESS_METERED = 3
      */
     private fun hookMeteredness() {
-        if (!SystemVersion.has(SystemVersion.UPSIDE_DOWN_CAKE)) return
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return
         profile.netMeteredness?.let { met ->
             listOf("getActiveNetworkMeteredness", "getNetworkMeteredness").forEach { mName ->
                 runCatching {
@@ -126,7 +126,7 @@ internal class NetworkHooker(private val profile: HookProfiles) : YukiBaseHooker
     private fun hookIpAddress() {
         profile.ipAddress ?: return
         runCatching {
-            val inetClass = classOf<InetAddress>()
+            val inetClass = InetAddress::class.java
             // 替换 NetworkInterface.getInterfaceAddresses() 返回的列表
             "java.net.NetworkInterface".toClass().method {
                 name("getInterfaceAddresses")

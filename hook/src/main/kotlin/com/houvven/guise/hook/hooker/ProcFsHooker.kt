@@ -1,10 +1,11 @@
 package com.houvven.guise.hook.hooker
 
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
-import com.hhighcapable.yukihookapi.hook.factory.method
-import com.hhighcapable.yukihookapi.hook.factory.toClass
-import com.hhighcapable.yukihookapi.hook.type.java.IntType
-import com.hhighcapable.yukihookapi.hook.type.java.StringClass
+import com.highcapable.yukihookapi.hook.factory.constructor
+import com.highcapable.yukihookapi.hook.factory.method
+import com.highcapable.yukihookapi.hook.factory.toClass
+import com.highcapable.yukihookapi.hook.type.java.IntType
+import com.highcapable.yukihookapi.hook.type.java.StringClass
 import com.houvven.guise.hook.profile.HookProfiles
 import java.io.File
 import java.io.FileInputStream
@@ -94,7 +95,9 @@ internal class ProcFsHooker(private val profile: HookProfiles) : YukiBaseHooker(
     private fun hookFileInputStream() {
         val fisClass = FileInputStream::class.java
         // 构造 String 路径
-        fisClass.constructor(StringClass).hook().after {
+        fisClass.constructor {
+            param(StringClass)
+        }.hook().after {
             val path = args.first() as? String ?: return@after
             if (!shouldReplacePath(path)) return@after
             val inst = instance as? FileInputStream ?: return@after
@@ -104,7 +107,9 @@ internal class ProcFsHooker(private val profile: HookProfiles) : YukiBaseHooker(
         }
 
         // 构造 File 路径
-        fisClass.constructor(File::class.java).hook().after {
+        fisClass.constructor {
+            param(File::class.java)
+        }.hook().after {
             val file = args.first() as? File ?: return@after
             val path = file.path
             if (!shouldReplacePath(path)) return@after
